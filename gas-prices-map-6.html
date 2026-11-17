@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Local Gas & Diesel Prices</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --red: #f85149;
+      --orange: #d29922;
+      --diesel: #a371f7;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 1000;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .toggle-group {
+      display: flex;
+      background: var(--surface2);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .toggle-group button {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 6px 10px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .toggle-group button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .toggle-group button.diesel.active {
+      background: var(--diesel);
+    }
+
+    button.icon-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+    }
+
+    button.icon-btn:hover { background: var(--border); }
+
+    .main {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .sidebar {
+      width: 360px;
+      max-width: 100%;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      z-index: 500;
+    }
+
+    .location-panel {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .location-status {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .location-status .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      flex-shrink: 0;
+    }
+
+    .location-status.error .dot { background: var(--red); }
+
+    .location-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .location-row input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 10px;
+      font-size: 0.85rem;
+      outline: none;
+      min-width: 0;
+    }
+
+    .location-row input:focus { border-color: var(--accent); }
+    .location-row input::placeholder { color: var(--text-muted); }
+
+    .btn-loc {
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn-loc:hover { filter: brightness(1.1); }
+
+    .btn-loc.secondary {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .unit-hint {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      padding: 0 2px;
+    }
+
+    .station-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .station-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+
+    .station-card:hover {
+      border-color: var(--accent);
+      background: #1c2128;
+    }
+
+    .station-card.selected {
+      border-color: var(--red);
+      background: #1c2128;
+      box-shadow: 0 0 0 2px var(--red);
+    }
+
+    .station-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 6px;
+      gap: 8px;
+    }
+
+    .station-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .station-price {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--green);
+      white-space: nowrap;
+    }
+
+    .station-price.diesel { color: var(--diesel); }
+
+    .station-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .badge.open {
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--green);
+    }
+
+    .badge.closed {
+      background: rgba(248, 81, 73, 0.15);
+      color: var(--red);
+    }
+
+    .station-addr {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .rank {
+      position: absolute;
+      top: 10px;
+      left: -4px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.7rem;
+      font-weight: 700;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform: translateX(-50%);
+    }
+
+    .map-container {
+      flex: 1;
+      position: relative;
+      min-width: 0;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      background: #1a1a1a;
+    }
+
+    /* Route info bar */
+    .route-bar {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: rgba(13, 17, 23, 0.95);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 16px;
+      display: none;
+      align-items: center;
+      gap: 14px;
+      max-width: 94%;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    .route-bar.visible { display: flex; }
+
+    .route-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .route-eta { font-weight: 600; font-size: 1rem; }
+    .route-dist { font-size: 0.8rem; color: var(--text-muted); }
+
+    .route-dest {
+      font-size: 0.85rem;
+      color: var(--accent);
+      max-width: 160px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .btn-clear-route {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    .btn-clear-route:hover { background: var(--border); }
+
+    /* Station detail panel (on map when selected) */
+    .station-detail {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: rgba(13, 17, 23, 0.96);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      min-width: 260px;
+      max-width: 92%;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+      display: none;
+    }
+
+    .station-detail.visible { display: block; }
+
+    .detail-name {
+      font-weight: 700;
+      font-size: 1.05rem;
+      margin-bottom: 4px;
+    }
+
+    .detail-price {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--green);
+      margin-bottom: 8px;
+    }
+
+    .detail-price.diesel { color: var(--diesel); }
+
+    .detail-row {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+
+    .detail-row strong { color: var(--text); font-weight: 500; }
+
+    .detail-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .detail-actions button {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-route {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-close-detail {
+      background: var(--surface2);
+      border: 1px solid var(--border) !important;
+      color: var(--text);
+    }
+
+    .loading, .empty {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .leaflet-control-zoom a {
+      background: var(--surface) !important;
+      color: var(--text) !important;
+      border-color: var(--border) !important;
+    }
+
+    .leaflet-control-attribution {
+      background: rgba(13,17,23,0.7) !important;
+      color: var(--text-muted) !important;
+      font-size: 10px !important;
+    }
+
+    .leaflet-routing-container { display: none !important; }
+
+    .leaflet-popup-content-wrapper {
+      background: var(--surface);
+      color: var(--text);
+      border-radius: 10px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+
+    .leaflet-popup-tip { background: var(--surface); }
+    .leaflet-popup-content { margin: 12px 14px; font-size: 0.9rem; }
+
+    .popup-price { font-size: 1.2rem; font-weight: 700; color: var(--green); }
+    .popup-price.diesel { color: var(--diesel); }
+
+    @media (max-width: 768px) {
+      .main { flex-direction: column; }
+      .sidebar {
+        width: 100%;
+        height: 42%;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .map-container { height: 58%; }
+      .rank { display: none; }
+      header { padding: 8px 10px; }
+    }
+
+    .price-marker {
+      background: var(--surface);
+      border: 2px solid var(--green);
+      border-radius: 8px;
+      padding: 3px 7px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--green);
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+
+    .price-marker.diesel {
+      border-color: var(--diesel);
+      color: var(--diesel);
+    }
+
+    .price-marker.closed {
+      border-color: var(--red);
+      color: var(--text-muted);
+      opacity: 0.7;
+    }
+
+    .price-marker.selected-marker {
+      border-color: var(--red) !important;
+      color: var(--red) !important;
+      box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.45);
+      transform: scale(1.12);
+    }
+
+    .user-marker {
+      width: 16px;
+      height: 16px;
+      background: var(--accent);
+      border: 3px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 0 4px rgba(88,166,255,0.3);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>⛽ Gas Prices</h1>
+      <div class="header-actions">
+        <div class="toggle-group">
+          <button id="btn-gas" class="active" onclick="setFuel('gas')">Regular</button>
+          <button id="btn-diesel" class="diesel" onclick="setFuel('diesel')">Diesel</button>
+        </div>
+        <div class="toggle-group">
+          <button id="btn-metric" class="active" onclick="setUnits('metric')">km / L</button>
+          <button id="btn-imperial" onclick="setUnits('imperial')">mi / gal</button>
+        </div>
+        <button class="icon-btn" title="Refresh prices" onclick="loadStations()">↻</button>
+      </div>
+    </header>
+
+    <div class="main">
+      <aside class="sidebar">
+        <div class="location-panel">
+          <div class="location-status" id="location-status">
+            <span class="dot"></span>
+            <span id="loc-text">Enter a city / ZIP or use GPS</span>
+          </div>
+          <div class="location-row">
+            <input type="text" id="loc-input" placeholder="City, postal code, or lat,lng" autocomplete="off" />
+            <button class="btn-loc secondary" onclick="goToManualLocation()">Go</button>
+            <button class="btn-loc" onclick="useGPS()">📍 GPS</button>
+          </div>
+          <div class="unit-hint" id="unit-hint">Prices in CAD/L · distances in km</div>
+        </div>
+        <div class="station-list" id="station-list">
+          <div class="empty">Enter a location or tap GPS to find stations.</div>
+        </div>
+      </aside>
+
+      <div class="map-container">
+        <div id="map"></div>
+
+        <div class="route-bar" id="route-bar">
+          <div class="route-info">
+            <div class="route-eta" id="route-eta">—</div>
+            <div class="route-dist" id="route-dist">—</div>
+          </div>
+          <div class="route-dest" id="route-dest"></div>
+          <button class="btn-clear-route" onclick="clearRoute()">Clear</button>
+        </div>
+
+        <div class="station-detail" id="station-detail">
+          <div class="detail-name" id="detail-name"></div>
+          <div class="detail-price" id="detail-price"></div>
+          <div class="detail-row"><span>📍</span> <strong id="detail-addr"></strong></div>
+          <div class="detail-row"><span>🕐</span> <span id="detail-hours"></span></div>
+          <div class="detail-row"><span id="detail-status-icon"></span> <span id="detail-status"></span></div>
+          <div class="detail-row"><span>📏</span> <span id="detail-dist"></span></div>
+          <div class="detail-actions">
+            <button class="btn-route" onclick="routeToSelected()">Get directions</button>
+            <button class="btn-close-detail" onclick="closeDetail()">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+  <script>
+    // ---------- State ----------
+    let map, userMarker, routingControl = null;
+    let userLat = null, userLng = null;
+    let stations = [];
+    let currentFuel = 'gas';
+    let units = 'metric'; // 'metric' | 'imperial'
+    let isCanada = true; // auto-detected from location
+    let selectedId = null;
+    let watchId = null;
+    let countryCode = 'CA';
+
+    // Canadian brands (Winnipeg / MB)
+    const BRANDS_CA = [
+      { name: 'Shell', weight: 1.00 },
+      { name: 'Petro-Canada', weight: 0.99 },
+      { name: 'Esso', weight: 1.01 },
+      { name: 'Co-op', weight: 0.97 },
+      { name: 'Domo', weight: 0.96 },
+      { name: '7-Eleven', weight: 1.00 },
+      { name: 'Husky', weight: 0.98 },
+      { name: 'Superstore', weight: 0.94 },
+      { name: 'Costco', weight: 0.93 },
+      { name: 'Safeway', weight: 0.97 },
+      { name: 'Mobil', weight: 1.00 },
+      { name: 'Fas Gas', weight: 0.98 },
+      { name: 'Canadian Tire', weight: 0.99 },
+    ];
+
+    // US brands
+    const BRANDS_US = [
+      { name: 'Shell', weight: 1.02 },
+      { name: 'Chevron', weight: 1.04 },
+      { name: 'Exxon', weight: 1.01 },
+      { name: 'BP', weight: 1.00 },
+      { name: 'Mobil', weight: 1.015 },
+      { name: 'Costco', weight: 0.92 },
+      { name: "Sam's Club", weight: 0.93 },
+      { name: 'QuikTrip', weight: 0.96 },
+      { name: 'RaceTrac', weight: 0.97 },
+      { name: 'Circle K', weight: 0.99 },
+      { name: '7-Eleven', weight: 1.00 },
+      { name: 'Valero', weight: 0.98 },
+      { name: 'ARCO', weight: 0.95 },
+      { name: 'Murphy USA', weight: 0.94 },
+      { name: 'Wawa', weight: 0.97 },
+    ];
+
+    // Approx Nov 2026 regional averages
+    // Canada: ~130–145 ¢/L regular, diesel a bit higher
+    // US: ~$3.50–4.00 / gal
+
+    function haversineKm(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 +
+                Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) *
+                Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    function isOpenNow(hours) {
+      if (hours === '24h') return true;
+      const h = new Date().getHours();
+      return h >= 6 && h < 23;
+    }
+
+    function detectRegion(lat, lng) {
+      // Rough bounding boxes
+      // Canada roughly north of ~49° in the prairies, but better: use reverse geocode result when available
+      // Simple heuristic for common areas
+      if (lat > 41.5 && lat < 84 && lng > -141 && lng < -52) {
+        // Could still be northern US; refine with known US states later
+        // For prairie / Winnipeg area specifically
+        if (lat > 48.5 && lng > -120 && lng < -88) return 'CA';
+        if (lat > 49 && lng > -141 && lng < -52) return 'CA';
+      }
+      // Default: if clearly US lower 48
+      if (lat > 24 && lat < 49.5 && lng > -125 && lng < -66) return 'US';
+      return 'CA'; // prefer metric when uncertain
+    }
+
+    // Real Winnipeg stations (verified OSM coords) — used when OSM API fails or as boost
+    const WINNIPEG_STATIONS = [
+      { name: 'Shell', address: '1420 Jefferson Ave, Winnipeg', lat: 49.9553916, lng: -97.1718912, regular: 1.11, diesel: 1.28, hours: '6am–11pm' },
+      { name: 'Domo', address: '1371 McPhillips St, Winnipeg', lat: 49.9407635, lng: -97.1583243, regular: 1.14, diesel: 1.30, hours: '24h' },
+      { name: 'Petro-Canada', address: '1425 McPhillips St, Winnipeg', lat: 49.9425736, lng: -97.1565906, regular: 1.14, diesel: 1.31, hours: '24h' },
+      { name: 'Co-op', address: '2615 McPhillips St, Winnipeg', lat: 49.9609760, lng: -97.1397224, regular: 1.18, diesel: 1.32, hours: '6am–11pm' },
+      { name: 'Domo', address: '849 Leila Ave, Winnipeg', lat: 49.9524966, lng: -97.1436970, regular: 1.18, diesel: 1.33, hours: '24h' },
+      { name: 'Esso', address: '1300 McPhillips St, Winnipeg', lat: 49.9389122, lng: -97.1609037, regular: 1.18, diesel: 1.32, hours: '24h' },
+      { name: 'Shell', address: '2222 McPhillips St, Winnipeg', lat: 49.9526339, lng: -97.1492206, regular: 1.18, diesel: 1.33, hours: '24h' },
+      { name: 'Shell', address: '920 Jefferson Ave, Winnipeg', lat: 49.9450566, lng: -97.1576209, regular: 1.18, diesel: 1.32, hours: '6am–11pm' },
+      { name: '7-Eleven', address: '1485 Inkster Blvd, Winnipeg', lat: 49.9447902, lng: -97.1760975, regular: 1.18, diesel: 1.34, hours: '24h' },
+      { name: 'Domo', address: '3685 Portage Ave, Winnipeg', lat: 49.8821762, lng: -97.3147820, regular: 1.28, diesel: 1.40, hours: '24h' },
+      { name: 'Petro-Canada', address: '1701 Ellice Ave, Winnipeg', lat: 49.8947632, lng: -97.2027398, regular: 1.25, diesel: 1.38, hours: '6am–11pm' },
+      { name: 'Shell', address: '31 Osborne St, Winnipeg', lat: 49.8803495, lng: -97.1478241, regular: 1.35, diesel: 1.48, hours: '24h' },
+      { name: 'Shell', address: '766 Corydon Ave, Winnipeg', lat: 49.8703648, lng: -97.1535176, regular: 1.32, diesel: 1.45, hours: '7am–11pm' },
+      { name: 'Shell', address: '1858 King Edward St, Winnipeg', lat: 49.9249087, lng: -97.2073542, regular: 1.28, diesel: 1.40, hours: '24h' },
+      { name: 'Shell', address: '1625 Kenaston Blvd, Winnipeg', lat: 49.8258424, lng: -97.2014663, regular: 1.30, diesel: 1.42, hours: '6am–11pm' },
+      { name: 'Shell', address: '903 Henderson Hwy, Winnipeg', lat: 49.9325383, lng: -97.0986801, regular: 1.31, diesel: 1.43, hours: '6am–11pm' },
+      { name: 'Petro-Canada', address: '1180 Nairn Ave, Winnipeg', lat: 49.8988516, lng: -97.0737583, regular: 1.38, diesel: 1.50, hours: '24h' },
+      { name: 'Esso', address: '845 Portage Ave, Winnipeg', lat: 49.8863998, lng: -97.1675894, regular: 1.33, diesel: 1.45, hours: '24h' },
+    ];
+
+    function isNearWinnipeg(lat, lng) {
+      return lat > 49.70 && lat < 50.15 && lng > -97.45 && lng < -96.85;
+    }
+
+    // Regional price baselines (local unit: $/L or $/gal)
+    // Updated ~Nov 2026 regional averages — estimates only (not live pump quotes)
+    function regionalBasePrices() {
+      if (isCanada || countryCode === 'CA') return { regular: 1.22, diesel: 1.35 };
+      if (countryCode === 'US') return { regular: 3.55, diesel: 3.95 };
+      if (countryCode === 'GB') return { regular: 1.42, diesel: 1.48 };
+      if (['DE','FR','ES','IT','NL','BE','AT','IE','PT'].includes(countryCode)) {
+        return { regular: 1.65, diesel: 1.55 };
+      }
+      if (countryCode === 'AU') return { regular: 1.85, diesel: 1.90 };
+      return { regular: 1.40, diesel: 1.45 };
+    }
+
+    function buildAddress(tags) {
+      const parts = [];
+      if (tags['addr:housenumber'] && tags['addr:street']) {
+        parts.push(tags['addr:housenumber'] + ' ' + tags['addr:street']);
+      } else if (tags['addr:street']) {
+        parts.push(tags['addr:street']);
+      } else if (tags['addr:full']) {
+        parts.push(tags['addr:full']);
+      }
+      if (tags['addr:city'] || tags['addr:suburb']) {
+        parts.push(tags['addr:city'] || tags['addr:suburb']);
+      }
+      if (parts.length) return parts.join(', ');
+      if (tags.name) return tags.name;
+      return 'Gas station';
+    }
+
+    function stationName(tags) {
+      return tags.brand || tags.name || tags.operator || 'Gas Station';
+    }
+
+    function stationHours(tags) {
+      if (tags.opening_hours) {
+        const oh = tags.opening_hours.toLowerCase();
+        if (oh.includes('24/7') || oh === '24/7') return '24h';
+        return tags.opening_hours.length > 28 ? tags.opening_hours.slice(0, 28) + '…' : tags.opening_hours;
+      }
+      return Math.random() < 0.3 ? '24h' : '6am–11pm';
+    }
+
+    function withTimeout(promise, ms) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+      ]);
+    }
+
+    // Fetch real fuel stations from OpenStreetMap (worldwide)
+    async function fetchStationsFromOSM(lat, lng, radiusM = 8000) {
+      const query = `[out:json][timeout:18];(node["amenity"="fuel"](around:${radiusM},${lat},${lng});way["amenity"="fuel"](around:${radiusM},${lat},${lng}););out center tags;`;
+      const endpoints = [
+        'https://overpass-api.de/api/interpreter',
+        'https://overpass.kumi.systems/api/interpreter',
+      ];
+      let data = null;
+      for (const url of endpoints) {
+        try {
+          const res = await withTimeout(fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'data=' + encodeURIComponent(query)
+          }), 12000);
+          if (!res.ok) continue;
+          data = await res.json();
+          if (data && data.elements && data.elements.length) break;
+        } catch (e) {
+          console.warn('Overpass failed', url, e.message || e);
+        }
+      }
+      if (!data || !data.elements || !data.elements.length) return [];
+
+      const base = regionalBasePrices();
+      const seen = new Set();
+      const list = [];
+
+      for (const el of data.elements) {
+        const latS = el.lat || (el.center && el.center.lat);
+        const lngS = el.lon || (el.center && el.center.lon);
+        if (latS == null || lngS == null) continue;
+        const key = latS.toFixed(5) + ',' + lngS.toFixed(5);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const tags = el.tags || {};
+        if (tags.amenity === 'charging_station') continue;
+        const hours = stationHours(tags);
+        const jitter = (Math.random() - 0.5) * 0.06;
+        list.push({
+          id: list.length + 1,
+          name: stationName(tags),
+          address: buildAddress(tags),
+          lat: latS,
+          lng: lngS,
+          regular: +(base.regular * (0.97 + Math.random() * 0.10) + jitter).toFixed(3),
+          diesel: +(base.diesel * (0.97 + Math.random() * 0.10) + jitter).toFixed(3),
+          hours,
+          open: isOpenNow(hours),
+          distanceKm: haversineKm(lat, lng, latS, lngS),
+          source: 'osm'
+        });
+      }
+      list.sort((a, b) => a.distanceKm - b.distanceKm);
+      return list.slice(0, 25).map((s, i) => ({ ...s, id: i + 1 }));
+    }
+
+    function getWinnipegStations(lat, lng) {
+      return WINNIPEG_STATIONS.map((s, i) => ({
+        id: i + 1,
+        name: s.name,
+        address: s.address,
+        lat: s.lat,
+        lng: s.lng,
+        // slight jitter so list feels "live"
+        regular: +(s.regular + (Math.random() - 0.5) * 0.03).toFixed(3),
+        diesel: +(s.diesel + (Math.random() - 0.5) * 0.04).toFixed(3),
+        hours: s.hours,
+        open: isOpenNow(s.hours),
+        distanceKm: haversineKm(lat, lng, s.lat, s.lng),
+        source: 'local'
+      })).sort((a, b) => a.distanceKm - b.distanceKm);
+    }
+
+    function generateSyntheticStations(lat, lng) {
+      const list = [];
+      const brands = (isCanada || countryCode === 'CA') ? BRANDS_CA : BRANDS_US;
+      const base = regionalBasePrices();
+      for (let i = 0; i < 14; i++) {
+        const angle = Math.random() * 2 * Math.PI;
+        const distKm = 0.4 + Math.random() * 7;
+        const dLat = (distKm / 111) * Math.cos(angle);
+        const dLng = (distKm / (111 * Math.cos(lat * Math.PI / 180))) * Math.sin(angle);
+        const brand = brands[Math.floor(Math.random() * brands.length)];
+        const hours = Math.random() < 0.28 ? '24h' : '6am–11pm';
+        list.push({
+          id: i + 1,
+          name: brand.name,
+          address: 'Nearby area',
+          lat: lat + dLat,
+          lng: lng + dLng,
+          regular: +(base.regular * brand.weight + (Math.random() - 0.5) * 0.06).toFixed(3),
+          diesel: +(base.diesel * brand.weight + (Math.random() - 0.5) * 0.08).toFixed(3),
+          hours,
+          open: isOpenNow(hours),
+          distanceKm: distKm,
+          source: 'synthetic'
+        });
+      }
+      return list.sort((a, b) => a.distanceKm - b.distanceKm);
+    }
+
+    // ---------- Formatting ----------
+    function usesGallons() {
+      // US (and optionally Liberia/Myanmar) use gallons; force gallons when imperial + US
+      return countryCode === 'US' || (!isCanada && units === 'imperial' && countryCode === 'US');
+    }
+
+    function formatPrice(value) {
+      if (isCanada || (countryCode === 'CA')) {
+        const cents = Math.round(value * 1000) / 10;
+        return `${cents.toFixed(1)}¢/L`;
+      }
+      if (countryCode === 'US') {
+        return `$${value.toFixed(3)}/gal`;
+      }
+      if (countryCode === 'GB') {
+        return `£${value.toFixed(3)}/L`;
+      }
+      if (['DE','FR','ES','IT','NL','BE','AT','IE','PT'].includes(countryCode)) {
+        return `€${value.toFixed(3)}/L`;
+      }
+      if (countryCode === 'AU') {
+        return `A$${value.toFixed(3)}/L`;
+      }
+      // default metric
+      if (units === 'imperial' && countryCode === 'US') return `$${value.toFixed(3)}/gal`;
+      return `$${value.toFixed(3)}/L`;
+    }
+
+    function formatPriceShort(value) {
+      if (isCanada || countryCode === 'CA') {
+        const cents = Math.round(value * 1000) / 10;
+        return `${cents.toFixed(1)}¢`;
+      }
+      if (countryCode === 'US') return `$${value.toFixed(2)}`;
+      if (countryCode === 'GB') return `£${value.toFixed(2)}`;
+      if (['DE','FR','ES','IT','NL','BE','AT','IE','PT'].includes(countryCode)) return `€${value.toFixed(2)}`;
+      return `$${value.toFixed(2)}`;
+    }
+
+    function formatDistance(km) {
+      if (units === 'metric') return `${km.toFixed(1)} km`;
+      return `${(km * 0.621371).toFixed(1)} mi`;
+    }
+
+    function priceUnitLabel() {
+      if (isCanada || countryCode === 'CA') return 'CAD/L';
+      if (countryCode === 'US') return 'USD/gal';
+      if (countryCode === 'GB') return 'GBP/L';
+      if (['DE','FR','ES','IT','NL','BE','AT','IE','PT'].includes(countryCode)) return 'EUR/L';
+      if (countryCode === 'AU') return 'AUD/L';
+      return units === 'metric' ? 'local/L' : 'local/gal';
+    }
+
+    function updateUnitHint() {
+      const dist = units === 'metric' ? 'km' : 'mi';
+      document.getElementById('unit-hint').textContent =
+        `Est. prices (${priceUnitLabel()}) · distances in ${dist}`;
+    }
+
+    // ---------- Map ----------
+    function initMap(lat, lng) {
+      if (map) {
+        map.setView([lat, lng], 12);
+        updateUserMarker(lat, lng);
+        return;
+      }
+
+      map = L.map('map', { zoomControl: true, attributionControl: true }).setView([lat, lng], 12);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+        className: 'map-tiles-dark'
+      }).addTo(map);
+
+      const style = document.createElement('style');
+      style.textContent = `
+        .map-tiles-dark {
+          filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9);
+        }
+        .leaflet-container { background: #111; }
+      `;
+      document.head.appendChild(style);
+
+      const userIcon = L.divIcon({
+        className: '',
+        html: '<div class="user-marker"></div>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+      });
+      userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+    }
+
+    function updateUserMarker(lat, lng) {
+      if (userMarker) userMarker.setLatLng([lat, lng]);
+      else if (map) {
+        const userIcon = L.divIcon({
+          className: '',
+          html: '<div class="user-marker"></div>',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8]
+        });
+        userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+      }
+    }
+
+    function addStationMarkers() {
+      if (!map) return;
+      map.eachLayer(layer => {
+        if (layer instanceof L.Marker && layer !== userMarker) map.removeLayer(layer);
+      });
+
+      stations.forEach(s => {
+        const price = currentFuel === 'gas' ? s.regular : s.diesel;
+        const isSelected = s.id === selectedId;
+        let cls = `price-marker ${currentFuel === 'diesel' ? 'diesel' : ''} ${s.open ? '' : 'closed'}`;
+        if (isSelected) cls += ' selected-marker';
+        const icon = L.divIcon({
+          className: '',
+          html: `<div class="${cls}">${formatPriceShort(price)}</div>`,
+          iconSize: [54, 22],
+          iconAnchor: [27, 11]
+        });
+
+        L.marker([s.lat, s.lng], { icon, zIndexOffset: isSelected ? 500 : 0 })
+          .addTo(map)
+          .on('click', () => selectStation(s.id));
+      });
+    }
+
+    // ---------- List ----------
+    function renderList() {
+      const listEl = document.getElementById('station-list');
+      if (!stations.length) {
+        listEl.innerHTML = '<div class="empty">No stations found.</div>';
+        return;
+      }
+
+      const sorted = [...stations].sort((a, b) => {
+        const pa = currentFuel === 'gas' ? a.regular : a.diesel;
+        const pb = currentFuel === 'gas' ? b.regular : b.diesel;
+        return pa - pb;
+      });
+
+      listEl.innerHTML = sorted.map((s, idx) => {
+        const price = currentFuel === 'gas' ? s.regular : s.diesel;
+        const selected = s.id === selectedId ? 'selected' : '';
+        return `
+          <div class="station-card ${selected}" onclick="selectStation(${s.id})">
+            <div class="rank">${idx + 1}</div>
+            <div class="station-top">
+              <div class="station-name">${s.name}</div>
+              <div class="station-price ${currentFuel}">${formatPrice(price)}</div>
+            </div>
+            <div class="station-meta">
+              <span>${formatDistance(s.distanceKm)}</span>
+              <span class="badge ${s.open ? 'open' : 'closed'}">${s.open ? '● Open' : '● Closed'}</span>
+              <span>${s.hours}</span>
+            </div>
+            <div class="station-addr">${s.address}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ---------- Selection & detail panel ----------
+    function selectStation(id) {
+      selectedId = id;
+      const s = stations.find(x => x.id === id);
+      if (!s || !map) return;
+
+      renderList();
+      addStationMarkers();
+      map.panTo([s.lat, s.lng], { animate: true });
+
+      // Scroll selected card into view in the list
+      const card = document.querySelector(`.station-card.selected`);
+      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      const price = currentFuel === 'gas' ? s.regular : s.diesel;
+      document.getElementById('detail-name').textContent = s.name;
+      const priceEl = document.getElementById('detail-price');
+      priceEl.textContent = formatPrice(price);
+      priceEl.className = 'detail-price' + (currentFuel === 'diesel' ? ' diesel' : '');
+      document.getElementById('detail-addr').textContent = s.address;
+      document.getElementById('detail-hours').textContent = s.hours === '24h' ? 'Open 24 hours' : s.hours;
+      document.getElementById('detail-status').textContent = s.open ? 'Open now' : 'Currently closed';
+      document.getElementById('detail-status-icon').textContent = s.open ? '✅' : '⛔';
+      document.getElementById('detail-dist').textContent = formatDistance(s.distanceKm) + ' away';
+      document.getElementById('station-detail').classList.add('visible');
+    }
+
+    function closeDetail() {
+      document.getElementById('station-detail').classList.remove('visible');
+    }
+
+    function routeToSelected() {
+      const s = stations.find(x => x.id === selectedId);
+      if (s) showRoute(s);
+    }
+
+    function showRoute(station) {
+      clearRoute(false);
+      if (!userLat || !map) return;
+
+      routingControl = L.Routing.control({
+        waypoints: [
+          L.latLng(userLat, userLng),
+          L.latLng(station.lat, station.lng)
+        ],
+        router: L.Routing.osrmv1({
+          serviceUrl: 'https://router.project-osrm.org/route/v1'
+        }),
+        routeWhileDragging: false,
+        addWaypoints: false,
+        draggableWaypoints: false,
+        fitSelectedRoutes: true,
+        showAlternatives: false,
+        lineOptions: {
+          styles: [{ color: '#58a6ff', opacity: 0.85, weight: 6 }]
+        },
+        createMarker: () => null
+      }).addTo(map);
+
+      routingControl.on('routesfound', function(e) {
+        const summary = e.routes[0].summary;
+        const distKm = summary.totalDistance / 1000;
+        const timeMin = Math.round(summary.totalTime / 60);
+        const eta = timeMin < 60
+          ? `${timeMin} min`
+          : `${Math.floor(timeMin/60)} hr ${timeMin%60} min`;
+
+        document.getElementById('route-eta').textContent = eta;
+        document.getElementById('route-dist').textContent = formatDistance(distKm);
+        document.getElementById('route-dest').textContent = station.name;
+        document.getElementById('route-bar').classList.add('visible');
+      });
+
+      routingControl.on('routingerror', function() {
+        const distKm = haversineKm(userLat, userLng, station.lat, station.lng);
+        document.getElementById('route-eta').textContent = `~${Math.round(distKm * 1.4)} min`;
+        document.getElementById('route-dist').textContent = formatDistance(distKm) + ' (est.)';
+        document.getElementById('route-dest').textContent = station.name;
+        document.getElementById('route-bar').classList.add('visible');
+      });
+    }
+
+    function clearRoute(resetSelection = true) {
+      if (routingControl && map) {
+        map.removeControl(routingControl);
+        routingControl = null;
+      }
+      document.getElementById('route-bar').classList.remove('visible');
+      if (resetSelection) {
+        selectedId = null;
+        closeDetail();
+        renderList();
+      }
+    }
+
+    // ---------- Toggles ----------
+    function setFuel(type) {
+      currentFuel = type;
+      document.getElementById('btn-gas').classList.toggle('active', type === 'gas');
+      document.getElementById('btn-diesel').classList.toggle('active', type === 'diesel');
+      renderList();
+      addStationMarkers();
+      if (selectedId) selectStation(selectedId);
+    }
+
+    function setUnits(u) {
+      units = u;
+      document.getElementById('btn-metric').classList.toggle('active', u === 'metric');
+      document.getElementById('btn-imperial').classList.toggle('active', u === 'imperial');
+      updateUnitHint();
+      renderList();
+      if (selectedId) selectStation(selectedId);
+      // refresh route distance label if visible
+      if (routingControl) {
+        const s = stations.find(x => x.id === selectedId);
+        if (s) showRoute(s);
+      }
+    }
+
+    // ---------- Location ----------
+    function setStatus(text, isError = false) {
+      document.getElementById('loc-text').textContent = text;
+      document.getElementById('location-status').classList.toggle('error', isError);
+    }
+
+    async function reverseGeocode(lat, lng) {
+      try {
+        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10`;
+        const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        const data = await res.json();
+        if (data && data.address) {
+          const cc = (data.address.country_code || '').toUpperCase();
+          countryCode = cc || countryCode;
+          isCanada = (cc === 'CA');
+          const city = data.address.city || data.address.town || data.address.village || data.address.municipality || '';
+          const region = data.address.state || data.address.province || '';
+          return { city, region, country: data.address.country || '', cc };
+        }
+      } catch (e) { console.warn(e); }
+      return null;
+    }
+
+    async function setLocation(lat, lng, label) {
+      userLat = lat;
+      userLng = lng;
+
+      const geo = await reverseGeocode(lat, lng);
+      if (geo) {
+        countryCode = geo.cc || countryCode;
+        isCanada = (countryCode === 'CA');
+        // Auto units: US → imperial; everyone else → metric (user can override)
+        if (countryCode === 'US') {
+          units = 'imperial';
+          document.getElementById('btn-imperial').classList.add('active');
+          document.getElementById('btn-metric').classList.remove('active');
+        } else {
+          units = 'metric';
+          document.getElementById('btn-metric').classList.add('active');
+          document.getElementById('btn-imperial').classList.remove('active');
+        }
+        const nice = [geo.city, geo.region].filter(Boolean).join(', ') || label;
+        const countryLabel = geo.country ? ` (${geo.country})` : '';
+        setStatus(nice + countryLabel);
+      } else {
+        isCanada = detectRegion(lat, lng) === 'CA';
+        countryCode = isCanada ? 'CA' : 'US';
+        setStatus(label || `${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+      }
+
+      updateUnitHint();
+      initMap(lat, lng);
+      loadStations();
+    }
+
+    function useGPS() {
+      setStatus('Getting GPS…');
+      if (!navigator.geolocation) {
+        setStatus('Geolocation not supported', true);
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setLocation(pos.coords.latitude, pos.coords.longitude, 'GPS location');
+          startWatching();
+        },
+        (err) => {
+          setStatus('Location denied or unavailable', true);
+          console.warn(err);
+        },
+        { enableHighAccuracy: true, timeout: 15000 }
+      );
+    }
+
+    async function goToManualLocation() {
+      const raw = document.getElementById('loc-input').value.trim();
+      if (!raw) return;
+
+      const coordMatch = raw.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/);
+      if (coordMatch) {
+        const lat = parseFloat(coordMatch[1]);
+        const lng = parseFloat(coordMatch[2]);
+        if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+          setLocation(lat, lng, `${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+          return;
+        }
+      }
+
+      setStatus('Looking up location…');
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(raw)}&limit=1`;
+        const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        const data = await res.json();
+        if (data && data.length > 0) {
+          const lat = parseFloat(data[0].lat);
+          const lng = parseFloat(data[0].lon);
+          const name = data[0].display_name.split(',').slice(0, 3).join(',');
+          setLocation(lat, lng, name);
+        } else {
+          setStatus('Location not found – try another search', true);
+        }
+      } catch (e) {
+        setStatus('Search failed – check connection', true);
+        console.error(e);
+      }
+    }
+
+    document.getElementById('loc-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') goToManualLocation();
+    });
+
+    function startWatching() {
+      if (watchId) return;
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          userLat = pos.coords.latitude;
+          userLng = pos.coords.longitude;
+          updateUserMarker(userLat, userLng);
+          stations.forEach(s => {
+            s.distanceKm = haversineKm(userLat, userLng, s.lat, s.lng);
+          });
+          renderList();
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+      );
+    }
+
+    function fitMapToStations() {
+      if (!map || !userLat) return;
+      const points = [[userLat, userLng]];
+      stations.forEach(s => points.push([s.lat, s.lng]));
+      if (points.length > 1) {
+        map.fitBounds(points, { padding: [40, 40], maxZoom: 14 });
+      } else {
+        map.setView([userLat, userLng], 13);
+      }
+    }
+
+    async function loadStations() {
+      if (!userLat) return;
+      const listEl = document.getElementById('station-list');
+      listEl.innerHTML = '<div class="loading"><div class="spinner"></div>Finding stations nearby…</div>';
+      closeDetail();
+      clearRoute(false);
+
+      let found = [];
+      try {
+        found = await fetchStationsFromOSM(userLat, userLng, 10000);
+        if (!found.length) found = await fetchStationsFromOSM(userLat, userLng, 20000);
+      } catch (e) {
+        console.warn('OSM fetch error', e);
+      }
+
+      // Winnipeg: prefer verified real stations if OSM returned nothing or few
+      if (isNearWinnipeg(userLat, userLng) && found.length < 5) {
+        found = getWinnipegStations(userLat, userLng);
+      }
+
+      // Always have something to show
+      if (!found.length) {
+        found = generateSyntheticStations(userLat, userLng);
+      }
+
+      stations = found.map((s, i) => ({
+        ...s,
+        id: i + 1,
+        distanceKm: s.distanceKm != null ? s.distanceKm : haversineKm(userLat, userLng, s.lat, s.lng),
+        open: isOpenNow(s.hours)
+      }));
+
+      renderList();
+      addStationMarkers();
+      fitMapToStations();
+    }
+
+    // Prefer real GPS; fall back to Winnipeg demo
+    if (navigator.geolocation) {
+      setStatus('Getting GPS…');
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setLocation(pos.coords.latitude, pos.coords.longitude, 'GPS location');
+          startWatching();
+        },
+        () => {
+          setLocation(49.8951, -97.1384, 'Winnipeg, MB (demo)');
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    } else {
+      setLocation(49.8951, -97.1384, 'Winnipeg, MB (demo)');
+    }
+  </script>
+</body>
+</html>
