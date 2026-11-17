@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Local Gas & Diesel Prices</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --red: #f85149;
+      --orange: #d29922;
+      --diesel: #a371f7;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 1000;
+    }
+
+    header h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .fuel-toggle {
+      display: flex;
+      background: var(--surface2);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .fuel-toggle button {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .fuel-toggle button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .fuel-toggle button.diesel.active {
+      background: var(--diesel);
+    }
+
+    button.icon-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+
+    button.icon-btn:hover { background: var(--border); }
+
+    .main {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .sidebar {
+      width: 360px;
+      max-width: 100%;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      z-index: 500;
+    }
+
+    .location-bar {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .location-bar .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      flex-shrink: 0;
+    }
+
+    .location-bar.error .dot { background: var(--red); }
+
+    .station-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .station-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      position: relative;
+    }
+
+    .station-card:hover,
+    .station-card.selected {
+      border-color: var(--accent);
+      background: #1c2128;
+    }
+
+    .station-card.selected {
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    .station-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 6px;
+    }
+
+    .station-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+
+    .station-price {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--green);
+    }
+
+    .station-price.diesel { color: var(--diesel); }
+
+    .station-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .badge.open {
+      background: rgba(63, 185, 80, 0.15);
+      color: var(--green);
+    }
+
+    .badge.closed {
+      background: rgba(248, 81, 73, 0.15);
+      color: var(--red);
+    }
+
+    .station-addr {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .rank {
+      position: absolute;
+      top: 10px;
+      left: -4px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.7rem;
+      font-weight: 700;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform: translateX(-50%);
+    }
+
+    .map-container {
+      flex: 1;
+      position: relative;
+      min-width: 0;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      background: #1a1a1a;
+    }
+
+    /* Speed overlay (Waze / Google Maps style) */
+    .speed-overlay {
+      position: absolute;
+      bottom: 24px;
+      right: 16px;
+      z-index: 1000;
+      background: rgba(13, 17, 23, 0.92);
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      padding: 10px 18px;
+      text-align: center;
+      min-width: 90px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      display: none;
+    }
+
+    .speed-overlay.visible { display: block; }
+
+    .speed-value {
+      font-size: 2.2rem;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--text);
+    }
+
+    .speed-unit {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .speed-overlay.over-limit .speed-value {
+      color: var(--red);
+    }
+
+    /* Route info bar */
+    .route-bar {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: rgba(13, 17, 23, 0.95);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 16px;
+      display: none;
+      align-items: center;
+      gap: 16px;
+      max-width: 90%;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    .route-bar.visible { display: flex; }
+
+    .route-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .route-eta {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    .route-dist {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .route-dest {
+      font-size: 0.85rem;
+      color: var(--accent);
+      max-width: 180px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .btn-clear-route {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    .btn-clear-route:hover { background: var(--border); }
+
+    /* Loading / empty states */
+    .loading, .empty {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Leaflet dark tweaks */
+    .leaflet-control-zoom a {
+      background: var(--surface) !important;
+      color: var(--text) !important;
+      border-color: var(--border) !important;
+    }
+
+    .leaflet-control-attribution {
+      background: rgba(13,17,23,0.7) !important;
+      color: var(--text-muted) !important;
+      font-size: 10px !important;
+    }
+
+    .leaflet-routing-container {
+      display: none !important; /* hide default panel, we use our own */
+    }
+
+    .leaflet-popup-content-wrapper {
+      background: var(--surface);
+      color: var(--text);
+      border-radius: 10px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+
+    .leaflet-popup-tip { background: var(--surface); }
+
+    .leaflet-popup-content { margin: 12px 14px; font-size: 0.9rem; }
+
+    .popup-price { font-size: 1.2rem; font-weight: 700; color: var(--green); }
+    .popup-price.diesel { color: var(--diesel); }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+      .main { flex-direction: column; }
+      .sidebar {
+        width: 100%;
+        height: 42%;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .map-container { height: 58%; }
+      .rank { display: none; }
+    }
+
+    /* Custom markers */
+    .price-marker {
+      background: var(--surface);
+      border: 2px solid var(--green);
+      border-radius: 8px;
+      padding: 3px 7px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--green);
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    }
+
+    .price-marker.diesel {
+      border-color: var(--diesel);
+      color: var(--diesel);
+    }
+
+    .price-marker.closed {
+      border-color: var(--red);
+      color: var(--text-muted);
+      opacity: 0.7;
+    }
+
+    .user-marker {
+      width: 16px;
+      height: 16px;
+      background: var(--accent);
+      border: 3px solid #fff;
+      border-radius: 50%;
+      box-shadow: 0 0 0 4px rgba(88,166,255,0.3);
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>⛽ Gas Prices</h1>
+      <div class="header-actions">
+        <div class="fuel-toggle">
+          <button id="btn-gas" class="active" onclick="setFuel('gas')">Regular</button>
+          <button id="btn-diesel" class="diesel" onclick="setFuel('diesel')">Diesel</button>
+        </div>
+        <button class="icon-btn" title="Recenter on me" onclick="recenter()">📍</button>
+        <button class="icon-btn" title="Refresh prices" onclick="loadStations()">↻</button>
+      </div>
+    </header>
+
+    <div class="main">
+      <aside class="sidebar">
+        <div class="location-bar" id="location-bar">
+          <span class="dot"></span>
+          <span id="loc-text">Getting location…</span>
+        </div>
+        <div class="station-list" id="station-list">
+          <div class="loading">
+            <div class="spinner"></div>
+            Finding nearby stations…
+          </div>
+        </div>
+      </aside>
+
+      <div class="map-container">
+        <div id="map"></div>
+
+        <div class="route-bar" id="route-bar">
+          <div class="route-info">
+            <div class="route-eta" id="route-eta">—</div>
+            <div class="route-dist" id="route-dist">—</div>
+          </div>
+          <div class="route-dest" id="route-dest"></div>
+          <button class="btn-clear-route" onclick="clearRoute()">Clear</button>
+        </div>
+
+        <div class="speed-overlay" id="speed-overlay">
+          <div class="speed-value" id="speed-value">0</div>
+          <div class="speed-unit">mph</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+  <script>
+    // ---------- State ----------
+    let map, userMarker, routingControl = null;
+    let userLat = null, userLng = null;
+    let stations = [];
+    let currentFuel = 'gas'; // 'gas' | 'diesel'
+    let selectedId = null;
+    let watchId = null;
+    let lastPos = null;
+    let speedMph = 0;
+
+    // Realistic mock data generator (works offline / without API keys)
+    // Prices based on late-2026 US averages (~$3.80 regular, ~$5.90 diesel)
+    const BRANDS = [
+      { name: 'Shell', weight: 1.02 },
+      { name: 'Chevron', weight: 1.04 },
+      { name: 'Exxon', weight: 1.01 },
+      { name: 'BP', weight: 1.00 },
+      { name: 'Mobil', weight: 1.015 },
+      { name: 'Costco', weight: 0.92 },
+      { name: "Sam's Club", weight: 0.93 },
+      { name: 'Costco', weight: 0.92 },
+      { name: 'QuikTrip', weight: 0.96 },
+      { name: 'RaceTrac', weight: 0.97 },
+      { name: 'Circle K', weight: 0.99 },
+      { name: '7-Eleven', weight: 1.00 },
+      { name: 'Valero', weight: 0.98 },
+      { name: 'Sunoco', weight: 1.01 },
+      { name: 'ARCO', weight: 0.95 },
+      { name: 'Murphy USA', weight: 0.94 },
+      { name: 'Wawa', weight: 0.97 },
+      { name: 'Sheetz', weight: 0.96 },
+    ];
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 3958.8; // miles
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2)**2 +
+                Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) *
+                Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    function isOpenNow(hours) {
+      // Simple mock: most stations open 6am–11pm, some 24h
+      if (hours === '24h') return true;
+      const now = new Date();
+      const h = now.getHours();
+      return h >= 6 && h < 23;
+    }
+
+    function generateStations(lat, lng) {
+      const list = [];
+      const baseGas = 3.55 + Math.random() * 0.45;   // ~3.55–4.00
+      const baseDiesel = 5.60 + Math.random() * 0.60; // ~5.60–6.20
+
+      for (let i = 0; i < 18; i++) {
+        // Random offset ~0.3–8 miles
+        const angle = Math.random() * 2 * Math.PI;
+        const distMiles = 0.25 + Math.random() * 7.5;
+        const dLat = (distMiles / 69) * Math.cos(angle);
+        const dLng = (distMiles / (69 * Math.cos(lat * Math.PI / 180))) * Math.sin(angle);
+
+        const brand = BRANDS[Math.floor(Math.random() * BRANDS.length)];
+        const gasPrice = +(baseGas * brand.weight + (Math.random() - 0.5) * 0.18).toFixed(3);
+        const dieselPrice = +(baseDiesel * brand.weight + (Math.random() - 0.5) * 0.25).toFixed(3);
+        const hours = Math.random() < 0.25 ? '24h' : '6am–11pm';
+        const open = isOpenNow(hours);
+
+        list.push({
+          id: i + 1,
+          name: brand.name,
+          address: `${100 + Math.floor(Math.random()*8900)} ${['Main','Oak','Pine','Maple','Cedar','Elm','Washington','Lincoln'][Math.floor(Math.random()*8)]} ${['St','Ave','Blvd','Rd','Dr'][Math.floor(Math.random()*5)]}`,
+          lat: lat + dLat,
+          lng: lng + dLng,
+          gas: gasPrice,
+          diesel: dieselPrice,
+          hours,
+          open,
+          distance: null // filled later
+        });
+      }
+
+      // Sort by current fuel price
+      return list;
+    }
+
+    // ---------- Map ----------
+    function initMap(lat, lng) {
+      map = L.map('map', {
+        zoomControl: true,
+        attributionControl: true
+      }).setView([lat, lng], 13);
+
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        subdomains: 'abcd',
+        maxZoom: 19
+      }).addTo(map);
+
+      // User location marker
+      const userIcon = L.divIcon({
+        className: '',
+        html: '<div class="user-marker"></div>',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8]
+      });
+      userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
+    }
+
+    function updateUserMarker(lat, lng) {
+      if (userMarker) userMarker.setLatLng([lat, lng]);
+    }
+
+    function addStationMarkers() {
+      // Clear existing station markers (keep user + route)
+      map.eachLayer(layer => {
+        if (layer instanceof L.Marker && layer !== userMarker && !layer._routing) {
+          map.removeLayer(layer);
+        }
+      });
+
+      stations.forEach(s => {
+        const price = currentFuel === 'gas' ? s.gas : s.diesel;
+        const cls = `price-marker ${currentFuel === 'diesel' ? 'diesel' : ''} ${s.open ? '' : 'closed'}`;
+        const icon = L.divIcon({
+          className: '',
+          html: `<div class="${cls}">$${price.toFixed(2)}</div>`,
+          iconSize: [60, 24],
+          iconAnchor: [30, 12]
+        });
+
+        const marker = L.marker([s.lat, s.lng], { icon })
+          .addTo(map)
+          .on('click', () => selectStation(s.id));
+
+        marker.bindPopup(`
+          <strong>${s.name}</strong><br>
+          <span class="popup-price ${currentFuel}">$${price.toFixed(3)}</span><br>
+          ${s.address}<br>
+          ${s.distance.toFixed(1)} mi · ${s.open ? 'Open' : 'Closed'}
+        `);
+      });
+    }
+
+    // ---------- List ----------
+    function renderList() {
+      const listEl = document.getElementById('station-list');
+      if (!stations.length) {
+        listEl.innerHTML = '<div class="empty">No stations found.</div>';
+        return;
+      }
+
+      // Sort by selected fuel price
+      const sorted = [...stations].sort((a, b) => {
+        const pa = currentFuel === 'gas' ? a.gas : a.diesel;
+        const pb = currentFuel === 'gas' ? b.gas : b.diesel;
+        return pa - pb;
+      });
+
+      listEl.innerHTML = sorted.map((s, idx) => {
+        const price = currentFuel === 'gas' ? s.gas : s.diesel;
+        const selected = s.id === selectedId ? 'selected' : '';
+        return `
+          <div class="station-card ${selected}" data-id="${s.id}" onclick="selectStation(${s.id})">
+            <div class="rank">${idx + 1}</div>
+            <div class="station-top">
+              <div class="station-name">${s.name}</div>
+              <div class="station-price ${currentFuel}">$${price.toFixed(3)}</div>
+            </div>
+            <div class="station-meta">
+              <span>${s.distance.toFixed(1)} mi</span>
+              <span class="badge ${s.open ? 'open' : 'closed'}">${s.open ? '● Open' : '● Closed'}</span>
+              <span>${s.hours}</span>
+            </div>
+            <div class="station-addr">${s.address}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ---------- Selection & Routing ----------
+    function selectStation(id) {
+      selectedId = id;
+      const s = stations.find(x => x.id === id);
+      if (!s) return;
+
+      renderList();
+      map.setView([s.lat, s.lng], Math.max(map.getZoom(), 14));
+
+      // Highlight on map by opening popup of nearest marker (simple approach)
+      showRoute(s);
+    }
+
+    function showRoute(station) {
+      clearRoute(false);
+
+      if (!userLat) return;
+
+      routingControl = L.Routing.control({
+        waypoints: [
+          L.latLng(userLat, userLng),
+          L.latLng(station.lat, station.lng)
+        ],
+        router: L.Routing.osrmv1({
+          serviceUrl: 'https://router.project-osrm.org/route/v1'
+        }),
+        routeWhileDragging: false,
+        addWaypoints: false,
+        draggableWaypoints: false,
+        fitSelectedRoutes: true,
+        showAlternatives: false,
+        lineOptions: {
+          styles: [{ color: '#58a6ff', opacity: 0.85, weight: 6 }]
+        },
+        createMarker: () => null // we already have markers
+      }).addTo(map);
+
+      routingControl.on('routesfound', function(e) {
+        const route = e.routes[0];
+        const summary = route.summary;
+        const distMi = (summary.totalDistance / 1609.34).toFixed(1);
+        const timeMin = Math.round(summary.totalTime / 60);
+        const eta = timeMin < 60
+          ? `${timeMin} min`
+          : `${Math.floor(timeMin/60)} hr ${timeMin%60} min`;
+
+        document.getElementById('route-eta').textContent = eta;
+        document.getElementById('route-dist').textContent = `${distMi} mi`;
+        document.getElementById('route-dest').textContent = station.name;
+        document.getElementById('route-bar').classList.add('visible');
+        document.getElementById('speed-overlay').classList.add('visible');
+      });
+
+      routingControl.on('routingerror', function() {
+        // Fallback straight-line estimate
+        const dist = haversine(userLat, userLng, station.lat, station.lng);
+        document.getElementById('route-eta').textContent = `~${Math.round(dist * 2.2)} min`;
+        document.getElementById('route-dist').textContent = `${dist.toFixed(1)} mi (est.)`;
+        document.getElementById('route-dest').textContent = station.name;
+        document.getElementById('route-bar').classList.add('visible');
+        document.getElementById('speed-overlay').classList.add('visible');
+      });
+    }
+
+    function clearRoute(resetSelection = true) {
+      if (routingControl) {
+        map.removeControl(routingControl);
+        routingControl = null;
+      }
+      document.getElementById('route-bar').classList.remove('visible');
+      document.getElementById('speed-overlay').classList.remove('visible');
+      if (resetSelection) {
+        selectedId = null;
+        renderList();
+      }
+    }
+
+    // ---------- Fuel toggle ----------
+    function setFuel(type) {
+      currentFuel = type;
+      document.getElementById('btn-gas').classList.toggle('active', type === 'gas');
+      document.getElementById('btn-diesel').classList.toggle('active', type === 'diesel');
+      renderList();
+      addStationMarkers();
+      if (selectedId) {
+        const s = stations.find(x => x.id === selectedId);
+        if (s) showRoute(s);
+      }
+    }
+
+    // ---------- Location & Speed ----------
+    function updateSpeed(pos) {
+      if (lastPos && pos.coords.speed != null && !isNaN(pos.coords.speed)) {
+        // Real GPS speed (m/s → mph)
+        speedMph = Math.round(pos.coords.speed * 2.23694);
+      } else if (lastPos) {
+        // Fallback: calculate from positions
+        const dt = (pos.timestamp - lastPos.timestamp) / 1000; // sec
+        if (dt > 0.5 && dt < 10) {
+          const d = haversine(lastPos.coords.latitude, lastPos.coords.longitude,
+                              pos.coords.latitude, pos.coords.longitude);
+          speedMph = Math.round((d / dt) * 3600);
+        }
+      }
+      lastPos = pos;
+
+      // Clamp realistic values for demo
+      if (speedMph < 0) speedMph = 0;
+      if (speedMph > 120) speedMph = 120;
+
+      const el = document.getElementById('speed-value');
+      el.textContent = speedMph;
+      document.getElementById('speed-overlay').classList.toggle('over-limit', speedMph > 70);
+    }
+
+    // Simulated speed when stationary (for demo of the UI)
+    let simSpeedInterval = null;
+    function startSimulatedSpeed() {
+      if (simSpeedInterval) return;
+      let t = 0;
+      simSpeedInterval = setInterval(() => {
+        // Gentle wave so the speedometer feels alive when not moving
+        if (speedMph < 3) {
+          t += 0.15;
+          const sim = Math.round(28 + Math.sin(t) * 8 + Math.random() * 3);
+          document.getElementById('speed-value').textContent = sim;
+        }
+      }, 800);
+    }
+
+    function locateUser() {
+      const locBar = document.getElementById('location-bar');
+      const locText = document.getElementById('loc-text');
+
+      if (!navigator.geolocation) {
+        locBar.classList.add('error');
+        locText.textContent = 'Geolocation not supported — using demo location';
+        useFallbackLocation();
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          userLat = pos.coords.latitude;
+          userLng = pos.coords.longitude;
+          locBar.classList.remove('error');
+          locText.textContent = `${userLat.toFixed(4)}, ${userLng.toFixed(4)}`;
+          initMap(userLat, userLng);
+          loadStations();
+          startWatching();
+        },
+        (err) => {
+          console.warn(err);
+          locBar.classList.add('error');
+          locText.textContent = 'Location denied — using Austin, TX demo';
+          useFallbackLocation();
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+
+    function useFallbackLocation() {
+      // Austin, TX (good density of stations for demo)
+      userLat = 30.2672;
+      userLng = -97.7431;
+      initMap(userLat, userLng);
+      loadStations();
+      startSimulatedSpeed();
+    }
+
+    function startWatching() {
+      if (watchId) return;
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          userLat = pos.coords.latitude;
+          userLng = pos.coords.longitude;
+          updateUserMarker(userLat, userLng);
+          updateSpeed(pos);
+          // Keep distances fresh
+          stations.forEach(s => {
+            s.distance = haversine(userLat, userLng, s.lat, s.lng);
+          });
+          renderList();
+        },
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+      );
+      startSimulatedSpeed();
+    }
+
+    function recenter() {
+      if (userLat && map) {
+        map.setView([userLat, userLng], 14);
+      }
+    }
+
+    // ---------- Load ----------
+    function loadStations() {
+      if (!userLat) return;
+      const listEl = document.getElementById('station-list');
+      listEl.innerHTML = '<div class="loading"><div class="spinner"></div>Finding nearby stations…</div>';
+
+      // Simulate network delay
+      setTimeout(() => {
+        stations = generateStations(userLat, userLng);
+        stations.forEach(s => {
+          s.distance = haversine(userLat, userLng, s.lat, s.lng);
+        });
+        renderList();
+        addStationMarkers();
+      }, 600);
+    }
+
+    // Kick off
+    locateUser();
+  </script>
+</body>
+</html>
